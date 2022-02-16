@@ -13,7 +13,7 @@ reserved = {i:i.upper() for i in keywords}
 
 class LexerCPP(object):
     tokens = ['ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','INPUT','OUTPUT','NE','AND','OR']+list(reserved.values())
-    literals = ['(',')','[',']','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';']
+    literals = ['(',')','[',']','{','}','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';']
     identifier = r'[_a-zA-Z][_a-zA-Z0-9]*'
     hexadec = r'(0[xX][0-9a-fA-F]+)'
     digit = r'([0-9]+)'
