@@ -3,12 +3,7 @@ import ply.lex as lex
 from ply.lex import TOKEN
 from tabulate import tabulate
 
-keywords = ['auto','break','case','char','const','continue','default','do','else','enum','extern',
-            'for','goto','if','int','register','return','signed','sizeof','static','cin','cout'
-            'struct','switch','typedef','union','unsigned','void','volatile','while','asm','dynamic_cast',
-            'namespace','reinterpret_cast','bool','explicit','new','static_cast','false','catch','operator',
-            'template','friend','private','class','this','inline','public','throw','const_cast','delete',
-            'mutable''protected','true','try','typeid','typename','using','virtual','wchar_t']
+keywords = ['break','char','continue','else','for','if','int','return','cin','cout','struct','void','while','bool','false','class','true']
 reserved = {i:i.upper() for i in keywords}
 
 class LexerCPP(object):
