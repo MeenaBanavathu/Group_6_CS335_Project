@@ -1,1 +1,2 @@
-# Compiler_CS335
+# Compiler Design CS335
+# Group 6
