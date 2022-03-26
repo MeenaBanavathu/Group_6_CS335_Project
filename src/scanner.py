@@ -7,8 +7,11 @@ keywords = ['break','char','continue','else','for','if','int','return','cin','co
 reserved = {i:i.upper() for i in keywords}
 
 class LexerCPP(object):
-    tokens = ['ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','INPUT','OUTPUT','NE','AND','OR']+list(reserved.values())
-    literals = ['(',')','[',']','{','}','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';']
+    tokens = [
+        'ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','NE','AND','OR','INPUT','OUTPUT',
+        'ADD_EQ','SUB_EQ','MUL_EQ','DIV_EQ','MOD_EQ','AND_EQ','XOR_EQ','OR_EQ','INC','DEC'
+    ]+list(reserved.values())
+    literals = ['(',')','[',']','{','}','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';',':','?']
     identifier = r'[_a-zA-Z][_a-zA-Z0-9]*'
     hexadec = r'(0[xX][0-9a-fA-F]+)'
     digit = r'([0-9]+)'
@@ -25,10 +28,22 @@ class LexerCPP(object):
     t_GE = r'>='
     t_EQUAL = r'=='
     t_NE = r'!='
-    t_INPUT = r'>>'
-    t_OUTPUT = r'<<'
     t_AND = r'&&'
     t_OR = r'\|\|'
+    t_INPUT = r'>>'
+    t_OUTPUT = r'<<'
+    
+    t_ADD_EQ = r"\+="
+    t_SUB_EQ = r"-="
+    t_MUL_EQ = r"\*="
+    t_DIV_EQ = r"/="
+    t_MOD_EQ = r"%="
+    t_AND_EQ = r"&="
+    t_XOR_EQ = r"^="
+    t_OR_EQ = r"\|="
+
+    t_INC = r"\+\+"
+    t_DEC = r"--"
     
     @TOKEN(identifier)
     def t_ID(self,t):
