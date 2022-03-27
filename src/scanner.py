@@ -3,12 +3,15 @@ import ply.lex as lex
 from ply.lex import TOKEN
 from tabulate import tabulate
 
-keywords = ['break','char','continue','else','for','if','int','return','cin','cout','struct','void','while','bool','false','class','true']
+keywords = [
+    'break','char','continue','else','for','if','int','return','struct',
+    'void','while','bool','false','class','true','cin','cout'
+]
 reserved = {i:i.upper() for i in keywords}
 
 class LexerCPP(object):
     tokens = [
-        'ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','NE','AND','OR','INPUT','OUTPUT',
+        'ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','NE','AND','OR','IN','OUT',
         'ADD_EQ','SUB_EQ','MUL_EQ','DIV_EQ','MOD_EQ','AND_EQ','XOR_EQ','OR_EQ','INC','DEC'
     ]+list(reserved.values())
     literals = ['(',')','[',']','{','}','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';',':','?']
@@ -30,8 +33,6 @@ class LexerCPP(object):
     t_NE = r'!='
     t_AND = r'&&'
     t_OR = r'\|\|'
-    t_INPUT = r'>>'
-    t_OUTPUT = r'<<'
     
     t_ADD_EQ = r"\+="
     t_SUB_EQ = r"-="
@@ -41,6 +42,9 @@ class LexerCPP(object):
     t_AND_EQ = r"&="
     t_XOR_EQ = r"^="
     t_OR_EQ = r"\|="
+    
+    t_IN = r">>"
+    t_OUT = r"<<"
 
     t_INC = r"\+\+"
     t_DEC = r"--"
