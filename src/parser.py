@@ -371,6 +371,10 @@ def p_error(p):
     else:
         print("Unexpected end of input")
 parser = yacc.yacc()
-s = "int factorial(int n){ \n int res=1; \n int i; \n for(i=2;i<=n;i++){ \n res=res*i; \n } \n return res; \n } \n int main(){ \n int a; \n cin>>a; \n int j = factorial(a); \n cout<<j; \n return 0; \n }"
-result = parser.parse(s)
+if __name__ == "__main__":
+    if(len(sys.argv) == 2):
+        file = sys.argv[1]
+        fl = open(file,'r')
+        inp = fl.read()
+        result = parser.parser(inp)
 print(result)
