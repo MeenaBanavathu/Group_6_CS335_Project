@@ -376,5 +376,5 @@ if __name__ == "__main__":
         file = sys.argv[1]
         fl = open(file,'r')
         inp = fl.read()
-        result = parser.parser(inp)
+        result = parser.parse(inp)
         print(result)
