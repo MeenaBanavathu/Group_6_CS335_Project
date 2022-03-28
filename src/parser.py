@@ -377,4 +377,4 @@ if __name__ == "__main__":
         fl = open(file,'r')
         inp = fl.read()
         result = parser.parser(inp)
-print(result)
+        print(result)
