@@ -2,7 +2,27 @@ import sys
 import os
 import scanner
 import ply.yacc as yacc
+from symtab import (
+    pop_scope,
+    push_scope,
+    new_scope,
+    get_current_symtab,
+    get_default_value,
+    compute_storage_size,
+    DATATYPE,
+    SYMBOL_TABLES,
+    STATIC_VARIABLE_MAPS,
+)
 
+class Node:
+    def __init__(self,name,_type,is_array=0,children=None,value=None):
+        self.name = name
+        self._type = _type
+        self.is_array = is_array
+        self.value = value
+        self.children = children
+        
+ERROR = []
 
 tokens = scanner.scanner.tokens
 literals = scanner.scanner.literals
@@ -11,15 +31,55 @@ flag_for_error = 0
 start = "translation_unit"
 
 def p_primary_expression(p):
-    """primary_expression : ID
-    | INTEGER
-    | STRING
-    | TRUE
-    | FALSE
-    | CHARACTER
+    """primary_expression : id
+    | int
+    | str
+    | bool
+    | char
     | '(' expression ')' """
-    p[0] = ("primary_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==4:
+        p[0]=p[2]
+    else:
+        p[0]=p[1]
+    
+def p_id(p):
+    """id : ID"""
+    symtab = get_current_symtab()
+    i = symtab.lookup(p[1])
+    if i is None:
+        err_msg = "Identifier not declared on line "+str(p.lineno(1))
+        ERROR.append(err_msg)
+        raise SyntaxError
+    arr = 0
+    if i["kind"]==0:
+        _type = i["type"]
+        arr = i["is_array"]
+    elif i["kind"]==1:
+        _type = i["return type"]
 
+    elif i["kind"]==2:
+        _type = "struct "+i["name"]
+    else:
+        _type = "class "+i["name"]
+    p[0] = Node("identifier",_type,arr,value=p[1])
+
+def p_str(p):
+    """str : STRING"""
+    p[0] = Node("constant","char",is_array=1,value=p[1])
+    
+def p_int(p):
+    """int : INTEGER"""
+    p[0] = Node("constant","int",value=p[1])
+    
+def p_char(p):
+    """char : CHARACTER"""
+    p[0] = Node("constant","char",value=p[1])
+    
+def p_id(p):
+    """bool : TRUE
+    | FALSE"""
+    p[0] = Node("constant","bool",value=p[1])
+    
 def p_postfix_expression(p):
     """postfix_expression : primary_expression
     | postfix_expression '[' expression ']'
@@ -29,8 +89,51 @@ def p_postfix_expression(p):
     | postfix_expression PTR ID
     | postfix_expression INC
     | postfix_expression DEC"""
-    p[0] = ("postfix_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    elif len(p)==3:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible type for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1]]})
+    elif len(p)==4:
+        if p[2]=='(':
+            name = p[1].value+"()"
+            i = symtab.lookup(name)
+            if i is None:
+                err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            p[0] = Node("function call",i["return type"],children={i["name"]:None})
+        elif p[2]=='.':
+            pass
+        else:
+            pass
+    else:
+        if p[2]=='(':
+            name = p[1].value+'('+','.join(p[3])+')'
+            i = symtab.lookup(name)
+            if i is None:
+                err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            p[0] = Node("function call",i["return type"],children={i["name"]:p[3]})
+        else:
+            name = '[]('+p[1]._type+','+p[3]._type+')'
+            i = symtab.lookup(name)
+            if i is None:
+                err_msg = "Incompatible type for [] in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
+        
+    
+    
 def p_argument_expression_list(p):
     """argument_expression_list : assignment_expression
     | argument_expression_list ',' assignment_expression"""
@@ -50,7 +153,7 @@ def p_unary_operator(p):
     | '-'
     | '~'
     | '!'"""
-    p[0] = ("unary_operator",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 def p_cast_expression(p):
     """cast_expression : unary_expression
@@ -129,7 +232,7 @@ def p_assignment_operator(p):
     | AND_EQ
     | XOR_EQ
     | OR_EQ"""
-    p[0] = ("assignment_operator",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 def p_expression(p):
     """expression : assignment_expression
@@ -146,8 +249,7 @@ def p_declaration(p):
     p[0] = ("declaration",) + tuple(p[-len(p)+1:])
 
 def p_declaration_specifiers(p):
-    """declaration_specifiers : 
-    | type_specifier
+    """declaration_specifiers : type_specifier
     | type_specifier declaration_specifiers"""
     p[0] = ("declaration_specifiers",) + tuple(p[-len(p)+1:])
 
@@ -370,11 +472,63 @@ def p_error(p):
         parser.errok()
     else:
         print("Unexpected end of input")
+
 parser = yacc.yacc()
+#done
+def populate_global_symbol_table():
+    table = get_current_symtab()
+    for op in ("+", "-"):
+        for _type in ["INT","CHAR"]:
+            _type = _type.lower()
+            table.insert({ "name": op, "return type": _type, "parameter types": [_type, _type]}, 1)
+
+    for op in ("<", ">", "<=", ">=", "==", "!=","&&", "||"):
+        for _type in ["INT","BOOL"]:
+            _type = _type.lower()
+            table.insert({"name": op, "return type": "bool", "parameter types": [_type, _type]}, 1)
+
+    for op in ("&", "|","^","~"):
+        for _type in ["INT","CHAR","BOOL"]:
+            _type = _type.lower()
+            table.insert({"name": op, "return type": "int", "parameter types": [_type]}, 1)
+            
+    for _type in ["INT","CHAR","BOOL"]:
+        _type = _type.lower()
+        table.insert({"name": '!', "return type": "bool", "parameter types": [_type]}, 1)
+        
+    for _type in ["INT","CHAR","BOOL"]:
+        _type = _type.lower()
+        table.insert({"name": '=', "return type": "bool", "parameter types": [_type,_type]}, 1)
+            
+    table.insert({"name": '-', "return type": "int", "parameter types": ['int']}, 1)
+    
+    for op in ("%", "/", "*"):
+        table.insert({"name": op, "return type": "int", "parameter types": ["int","int"], }, 1)
+
+    for op in ("++", "--"):
+        table.insert({"name": op,"return type": "int", "parameter types": ["int"]}, 1)
+        
+    for op in ("in","out"):
+        for _type in ["INT","CHAR","BOOL"]:
+            _type = _type.lower()
+            table.insert({"name": op, "return type": "bool", "parameter types": [_type]}, 1)
+            
+    for _type in ["INT","CHAR","BOOL"]:
+        _type = _type.lower()
+        table.insert({"name": "[]", "return type": _type, "parameter types": [f"{_type}*", "int"]}, 1)
+
+#done
 if __name__ == "__main__":
     if(len(sys.argv) == 2):
         file = sys.argv[1]
         fl = open(file,'r')
         inp = fl.read()
+        push_scope(new_scope(get_current_symtab()))
+        populate_global_symbol_table()
         result = parser.parse(inp)
-        print(result)
+        if len(GLOBAL_ERROR_LIST)==0:
+            pop_scope()
+            make_ast(result)
+        else:
+            for err in GLOBAL_ERROR_LIST:
+                print(err)       
