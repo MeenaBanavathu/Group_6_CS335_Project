@@ -143,8 +143,18 @@ def p_unary_expression(p):
     """unary_expression : postfix_expression
     | INC unary_expression
     | DEC unary_expression
-    | unary_operator cast_expression"""
-    p[0] = ("unary_expression",) + tuple(p[-len(p)+1:])
+    | unary_operator unary_expression"""
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[1]+'('+p[2]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible type for "+p[1]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[2]]})
 
 def p_unary_operator(p):
     """unary_operator : '&'
@@ -155,72 +165,179 @@ def p_unary_operator(p):
     | '!'"""
     p[0] = p[1]
 
-def p_cast_expression(p):
-    """cast_expression : unary_expression
-    | '(' type_name ')' cast_expression"""
-    p[0] = ("cast_expression",) + tuple(p[-len(p)+1:])
 
 def p_multiplicative_expression(p):
-    """multiplicative_expression : cast_expression
-    | multiplicative_expression '*' cast_expression
-    | multiplicative_expression '/' cast_expression
-    | multiplicative_expression '%' cast_expression"""
-    p[0] = ("multiplicative_expression",) + tuple(p[-len(p)+1:])
+    """multiplicative_expression : unary_expression
+    | multiplicative_expression '*' unary_expression
+    | multiplicative_expression '/' unary_expression
+    | multiplicative_expression '%' unary_expression"""
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
 def p_additive_expression(p):
     """additive_expression : multiplicative_expression
     | additive_expression '+' multiplicative_expression
     | additive_expression '-' multiplicative_expression"""
-    p[0] = ("additive_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
+        
 def p_relational_expression(p):
     """relational_expression : additive_expression
     | relational_expression '<' additive_expression
     | relational_expression '>' additive_expression
     | relational_expression LE additive_expression
     | relational_expression GE additive_expression"""
-    p[0] = ("relational_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
+        
 def p_equality_expression(p):
     """equality_expression : relational_expression
     | equality_expression EQUAL relational_expression
     | equality_expression NE relational_expression"""
-    p[0] = ("equality_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+
 
 def p_and_expression(p):
     """and_expression : equality_expression
     | and_expression '&' equality_expression"""
-    p[0] = ("and_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
+        
 def p_exclusive_or_expression(p):
     """exclusive_or_expression : and_expression
     | exclusive_or_expression '^' and_expression"""
-    p[0] = ("exclusive_or_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
 def p_inclusive_or_expression(p):
     """inclusive_or_expression : exclusive_or_expression
     | inclusive_or_expression '|' exclusive_or_expression"""
-    p[0] = ("inclusive_or_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+
 
 def p_logical_and_expression(p):
     """logical_and_expression : inclusive_or_expression
     | logical_and_expression AND inclusive_or_expression"""
-    p[0] = ("logical_and_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
+        
 def p_logical_or_expression(p):
     """logical_or_expression : logical_and_expression
     | logical_or_expression OR logical_and_expression"""
-    p[0] = ("logical_or_expression",) + tuple(p[-len(p)+1:])
-
-def p_conditional_expression(p):
-    """conditional_expression : logical_or_expression
-    | logical_or_expression '?' expression ':' conditional_expression"""
-    p[0] = ("conditional_expression",) + tuple(p[-len(p)+1:])
-
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        symtab=get_current_symtab()
+        name = p[2]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+    
+        
 def p_assignment_expression(p):
-    """assignment_expression : conditional_expression
+    """assignment_expression : logical_or_expression
     | unary_expression assignment_operator assignment_expression"""
-    p[0] = ("assignment_expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        if len(p[2])>1:
+            symtab=get_current_symtab()
+            name = p[2][0]+'('+p[1]._type.lower()+','+p[3]._type.lower()+')'
+            i = symtab.lookup(name)
+            if i is None:
+                err_msg = "Incompatible types for "+p[2][0]+" in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            temp = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        symtab=get_current_symtab()
+        name = '='+'('+p[1]._type.lower()+','+temp._type.lower()+')'
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible types for = in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        temp = Node("function call",i["return type"],children={i["name"]:[p[1],temp]})
 
 def p_assignment_operator(p):
     """assignment_operator : '='
@@ -237,12 +354,15 @@ def p_assignment_operator(p):
 def p_expression(p):
     """expression : assignment_expression
     | expression ',' assignment_expression"""
-    p[0] = ("expression",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=p[1]
+    else:
+        
 
 def p_constant_expression(p):
     """constant_expression : conditional_expression"""
-    p[0] = ("constant_expression",) + tuple(p[-len(p)+1:])
-
+    p[0] = p[1]
+    
 def p_declaration(p):
     """declaration : declaration_specifiers ';'
     | declaration_specifiers init_declarator_list ';'"""
@@ -270,7 +390,7 @@ def p_type_specifier(p):
     | BOOL
     | struct_specifier
     | class_definition"""
-    p[0] = ("type_specifier",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 def p_class_definition(p):
     """class_definition : CLASS ID '{' class_member_list '}'"""
@@ -284,8 +404,8 @@ def p_class_member_list(p):
 def p_class_member(p):
     """class_member : function_definition
     | declaration"""
-    p[0] = ("class_member",) + tuple(p[-len(p)+1:])
-
+    p[0] = p[1]
+    
 def p_struct_specifier(p):
     """struct_specifier : STRUCT ID '{' struct_declaration_list '}'"""
     p[0] = ("struct_specifier",) + tuple(p[-len(p)+1:])
@@ -393,7 +513,7 @@ def p_statement(p):
     | selection_statement
     | iteration_statement
     | jump_statement"""
-    p[0] = ("statement",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 def p_compound_statement(p):
     """compound_statement : '{' statement_list '}'
@@ -485,7 +605,7 @@ def populate_global_symbol_table():
     for op in ("<", ">", "<=", ">=", "==", "!=","&&", "||"):
         for _type in ["INT","BOOL"]:
             _type = _type.lower()
-            table.insert({"name": op, "return type": "bool", "parameter types": [_type, _type]}, 1)
+            table.insert({"name": op, "return type": "int", "parameter types": [_type, _type]}, 1)
 
     for op in ("&", "|","^","~"):
         for _type in ["INT","CHAR","BOOL"]:
@@ -494,11 +614,11 @@ def populate_global_symbol_table():
             
     for _type in ["INT","CHAR","BOOL"]:
         _type = _type.lower()
-        table.insert({"name": '!', "return type": "bool", "parameter types": [_type]}, 1)
+        table.insert({"name": '!', "return type": "int", "parameter types": [_type]}, 1)
         
     for _type in ["INT","CHAR","BOOL"]:
         _type = _type.lower()
-        table.insert({"name": '=', "return type": "bool", "parameter types": [_type,_type]}, 1)
+        table.insert({"name": '=', "return type": "int", "parameter types": [_type,_type]}, 1)
             
     table.insert({"name": '-', "return type": "int", "parameter types": ['int']}, 1)
     
@@ -511,7 +631,7 @@ def populate_global_symbol_table():
     for op in ("in","out"):
         for _type in ["INT","CHAR","BOOL"]:
             _type = _type.lower()
-            table.insert({"name": op, "return type": "bool", "parameter types": [_type]}, 1)
+            table.insert({"name": op, "return type": "int", "parameter types": [_type]}, 1)
             
     for _type in ["INT","CHAR","BOOL"]:
         _type = _type.lower()
