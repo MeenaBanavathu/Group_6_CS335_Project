@@ -110,7 +110,13 @@ def p_postfix_expression(p):
                 raise SyntaxError
             p[0] = Node("function call",i["return type"],children={i["name"]:None})
         elif p[2]=='.':
-            pass
+            name = p[1].value
+            i = symtab.lookup(name)
+            if i is None:
+                err_msg = "Undeclared variable "+name+" used in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            
         else:
             pass
     else:
