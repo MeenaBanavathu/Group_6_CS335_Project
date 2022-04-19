@@ -75,7 +75,7 @@ def p_char(p):
     """char : CHARACTER"""
     p[0] = Node("constant","char",value=p[1])
     
-def p_id(p):
+def p_bool(p):
     """bool : TRUE
     | FALSE"""
     p[0] = Node("constant","bool",value=p[1])
@@ -143,7 +143,10 @@ def p_postfix_expression(p):
 def p_argument_expression_list(p):
     """argument_expression_list : assignment_expression
     | argument_expression_list ',' assignment_expression"""
-    p[0] = ("argument_expression_list",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1]+[p[3]]
 
 def p_unary_expression(p):
     """unary_expression : postfix_expression
@@ -361,9 +364,9 @@ def p_expression(p):
     """expression : assignment_expression
     | expression ',' assignment_expression"""
     if len(p)==2:
-        p[0]=p[1]
+        p[0]=[p[1]]
     else:
-        
+        p[0] = p[1]+[p[3]]
 
 def p_constant_expression(p):
     """constant_expression : conditional_expression"""
@@ -372,6 +375,7 @@ def p_constant_expression(p):
 def p_declaration(p):
     """declaration : declaration_specifiers ';'
     | declaration_specifiers init_declarator_list ';'"""
+    
     p[0] = ("declaration",) + tuple(p[-len(p)+1:])
 
 def p_declaration_specifiers(p):
@@ -400,13 +404,17 @@ def p_type_specifier(p):
 
 def p_class_definition(p):
     """class_definition : CLASS ID '{' class_member_list '}'"""
-    p[0] = ("class_definition",) + tuple(p[-len(p)+1:])
+    
+    p[0] = Node("")
 
 def p_class_member_list(p):
     """class_member_list : class_member
     | class_member_list class_member"""
-    p[0] = ("class_member_list",) + tuple(p[-len(p)+1:])
-
+    if len(p)==2:
+        p[0]=[p[1]]
+    else:
+        p[0] = p[1]+[p[2]]
+        
 def p_class_member(p):
     """class_member : function_definition
     | declaration"""
@@ -475,7 +483,10 @@ def p_parameter_declaration(p):
 def p_identifier_list(p):
     """identifier_list : ID
     | identifier_list ',' ID"""
-    p[0] = ("identifier_list",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=[p[1]]
+    else:
+        p[0] = p[1]+[p[3]]
 
 def p_type_name(p):
     """type_name : specifier_qualifier_list
@@ -509,8 +520,11 @@ def p_initializer(p):
 def p_initializer_list(p):
     """initializer_list : initializer
     | initializer_list ',' initializer"""
-    p[0] = ("initializer_list",) + tuple(p[-len(p)+1:])
-
+    if len(p)==2:
+        p[0]=[p[1]]
+    else:
+        p[0] = p[1]+[p[3]]
+        
 def p_statement(p):
     """statement : input_statement
     | output_statement
@@ -525,49 +539,70 @@ def p_compound_statement(p):
     """compound_statement : '{' statement_list '}'
     | '{' declaration_list '}'
     | '{' declaration_list statement_list '}'"""
-    p[0] = ("compound_statement",) + tuple(p[-len(p)+1:])
+    
 
 def p_declaration_list(p):
     """declaration_list : declaration
     | declaration_list declaration"""
-    p[0] = ("declaration_list",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=[p[1]]
+    else:
+        p[0] = p[1]+[p[2]]
 
 def p_statement_list(p):
     """statement_list : statement
     | statement_list statement"""
-    p[0] = ("statement_list",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=[p[1]]
+    else:
+        p[0] = p[1]+[p[2]]
 
 def p_expression_statement(p):
     """expression_statement : ';'
     | expression ';'"""
-    p[0] = ("expression_statement",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=Node("statement","expression")
+    else:
+        p[0]=Node("statement","expression",value=p[1])
 
 def p_selection_statement(p):
     """selection_statement : IF '(' expression ')' statement
     | IF '(' expression ')' statement ELSE statement"""
-    p[0] = ("selection_statement",) + tuple(p[-len(p)+1:])
+    if len(p)==6:
+        p[0] = Node("statement","IF",children={"condition":p[3],"block":p[5]})
+    else:
+        p[0] = Node("statement","IF_ELSE",children={"condition":p[3],"IF_block":p[5],"ELSE_block":p[7]})        
 
 def p_iteration_statement(p):
     """iteration_statement : WHILE '(' expression ')' statement
     | FOR '(' expression_statement expression_statement expression ')' statement"""
-    p[0] = ("iteration_statement",) + tuple(p[-len(p)+1:])
-
+    if len(p)==6:
+        p[0] = Node("statement","WHILE",children={"condition":p[3],"block":p[5]})
+    else:
+        p[0] = Node("statement","FOR",children={"init":p[3],"condition":p[4],"update":p[5],"block":p[7]})
+    
 def p_jump_statement(p):
     """jump_statement : CONTINUE ';'
     | BREAK ';'
     | RETURN ';'
     | RETURN expression ';'"""
-    p[0] = ("jump_statement",) + tuple(p[-len(p)+1:])
+    if len(p)==3:
+        p[0] = Node("statement",p[1])
+    else:
+        p[0] = Node("statement",p[1],children={"value":p[2]})
 
 def p_translation_unit(p):
     """translation_unit : external_declaration
     | translation_unit external_declaration"""
-    p[0] = ("translation_unit",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1]+[p[2]]
 
 def p_external_declaration(p):
     """external_declaration : function_definition
     | declaration"""
-    p[0] = ("external_declaration",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 def p_function_definition(p):
     """function_definition : declaration_specifiers declarator declaration_list compound_statement
@@ -577,17 +612,21 @@ def p_function_definition(p):
     p[0] = ("function_definition",) + tuple(p[-len(p)+1:])
     
 def p_input_statement(p):
-    """input_statement : CIN IN ID ';'"""
-    p[0] = ("input_statement",) + tuple(p[-len(p)+1:])
+    """input_statement : CIN IN id ';'"""
+    
+    p[0] = Node("statement",p[1],value=p[3])
 
 def p_output_statement(p):
     """output_statement : COUT output_list ';'"""
-    p[0] = ("output_statement",) + tuple(p[-len(p)+1:])
+    p[0]=Node("statement",p[1],value=p[2])
     
 def p_output_list(p):
     """output_list : OUT primary_expression
     | output_list OUT primary_expression"""
-    p[0] = ("output_list",) + tuple(p[-len(p)+1:])
+    if len(p)==3:
+        p[0]=[p[2]]
+    else:
+        p[0]=p[1]+[p[3]]
     
 def p_error(p):
     global flag_for_error
