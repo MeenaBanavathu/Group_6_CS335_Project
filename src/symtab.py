@@ -90,7 +90,7 @@ class SymbolTable:
             elif kind == 3:
                 # Class
                 self._symtab_classes[name] = entry
-                self._custom_types[name] = entry
+                self._custom_types[f"class {name}"] = entry
 
             else:
                 raise Exception(f"{kind} is not a valid kind of identifier")
