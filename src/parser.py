@@ -8,10 +8,8 @@ from symtab import (
     new_scope,
     get_current_symtab,
     get_default_value,
-    compute_storage_size,
     DATATYPE,
     SYMBOL_TABLES,
-    STATIC_VARIABLE_MAPS,
 )
 
 class Node:
@@ -21,7 +19,7 @@ class Node:
         self.is_array = is_array
         self.value = value
         self.children = children
-        
+
 ERROR = []
 
 tokens = scanner.scanner.tokens
@@ -56,11 +54,6 @@ def p_id(p):
         arr = i["is_array"]
     elif i["kind"]==1:
         _type = i["return type"]
-
-    elif i["kind"]==2:
-        _type = "struct "+i["name"]
-    else:
-        _type = "class "+i["name"]
     p[0] = Node("identifier",_type,arr,value=p[1])
 
 def p_str(p):
@@ -79,14 +72,12 @@ def p_bool(p):
     """bool : TRUE
     | FALSE"""
     p[0] = Node("constant","bool",value=p[1])
-    
+
 def p_postfix_expression(p):
     """postfix_expression : primary_expression
     | postfix_expression '[' expression ']'
     | postfix_expression '(' ')'
     | postfix_expression '(' argument_expression_list ')'
-    | postfix_expression '.' ID
-    | postfix_expression PTR ID
     | postfix_expression INC
     | postfix_expression DEC"""
     if len(p)==2:
@@ -101,25 +92,14 @@ def p_postfix_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1]]})
     elif len(p)==4:
-        if p[2]=='(':
-            name = p[1].value+"()"
-            i = symtab.lookup(name)
-            if i is None:
-                err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
-                ERROR.append(err_msg)
-                raise SyntaxError
-            p[0] = Node("function call",i["return type"],children={i["name"]:None})
-        elif p[2]=='.':
-            name = p[1].value
-            i = symtab.lookup(name)
-            if i is None:
-                err_msg = "Undeclared variable "+name+" used in line "+str(p.lineno(1))
-                ERROR.append(err_msg)
-                raise SyntaxError
-            
-        else:
-            pass
-    else:
+        name = p[1].value+"()"
+        i = symtab.lookup(name)
+        if i is None:
+            err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
+            ERROR.append(err_msg)
+            raise SyntaxError
+        p[0] = Node("function call",i["return type"],children={i["name"]:None})       
+    elif len(p)==5:
         if p[2]=='(':
             name = p[1].value+'('+','.join(p[3])+')'
             i = symtab.lookup(name)
@@ -136,9 +116,6 @@ def p_postfix_expression(p):
                 ERROR.append(err_msg)
                 raise SyntaxError
             p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
-
-        
-    
     
 def p_argument_expression_list(p):
     """argument_expression_list : assignment_expression
@@ -172,7 +149,7 @@ def p_unary_operator(p):
     | '-'
     | '~'
     | '!'"""
-    p[0] = p[1]
+    p[0]=p[1]
 
 
 def p_multiplicative_expression(p):
@@ -208,7 +185,6 @@ def p_additive_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-        
 def p_relational_expression(p):
     """relational_expression : additive_expression
     | relational_expression '<' additive_expression
@@ -227,7 +203,6 @@ def p_relational_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-        
 def p_equality_expression(p):
     """equality_expression : relational_expression
     | equality_expression EQUAL relational_expression
@@ -244,7 +219,6 @@ def p_equality_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-
 def p_and_expression(p):
     """and_expression : equality_expression
     | and_expression '&' equality_expression"""
@@ -260,7 +234,6 @@ def p_and_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-        
 def p_exclusive_or_expression(p):
     """exclusive_or_expression : and_expression
     | exclusive_or_expression '^' and_expression"""
@@ -291,7 +264,6 @@ def p_inclusive_or_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-
 def p_logical_and_expression(p):
     """logical_and_expression : inclusive_or_expression
     | logical_and_expression AND inclusive_or_expression"""
@@ -307,7 +279,6 @@ def p_logical_and_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
 
-        
 def p_logical_or_expression(p):
     """logical_or_expression : logical_and_expression
     | logical_or_expression OR logical_and_expression"""
@@ -322,8 +293,8 @@ def p_logical_or_expression(p):
             ERROR.append(err_msg)
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
-    
-        
+
+
 def p_assignment_expression(p):
     """assignment_expression : logical_or_expression
     | unary_expression assignment_operator assignment_expression"""
@@ -364,19 +335,18 @@ def p_expression(p):
     """expression : assignment_expression
     | expression ',' assignment_expression"""
     if len(p)==2:
-        p[0]=[p[1]]
+        p[0] = [p[1]]
     else:
         p[0] = p[1]+[p[3]]
 
 def p_constant_expression(p):
-    """constant_expression : conditional_expression"""
+    """constant_expression : logical_or_expression"""
     p[0] = p[1]
-    
+
 def p_declaration(p):
     """declaration : declaration_specifiers ';'
     | declaration_specifiers init_declarator_list ';'"""
-    
-    p[0] = ("declaration",) + tuple(p[-len(p)+1:])
+    p[0] = 
 
 def p_declaration_specifiers(p):
     """declaration_specifiers : type_specifier
@@ -397,57 +367,15 @@ def p_type_specifier(p):
     """type_specifier : VOID
     | CHAR
     | INT
-    | BOOL
-    | struct_specifier
-    | class_definition"""
-    p[0] = p[1]
+    | BOOL"""
+    p[0] = ("type_specifier",) + tuple(p[-len(p)+1:])
 
-def p_class_definition(p):
-    """class_definition : CLASS ID '{' class_member_list '}'"""
-    
-    p[0] = Node("")
-
-def p_class_member_list(p):
-    """class_member_list : class_member
-    | class_member_list class_member"""
-    if len(p)==2:
-        p[0]=[p[1]]
-    else:
-        p[0] = p[1]+[p[2]]
-        
-def p_class_member(p):
-    """class_member : function_definition
-    | declaration"""
-    p[0] = p[1]
-    
-def p_struct_specifier(p):
-    """struct_specifier : STRUCT ID '{' struct_declaration_list '}'"""
-    p[0] = ("struct_specifier",) + tuple(p[-len(p)+1:])
-
-def p_struct_declaration_list(p):
-    """struct_declaration_list : struct_declaration
-    | struct_declaration_list struct_declaration"""
-    p[0] = ("struct_declaration_list",) + tuple(p[-len(p)+1:])
-
-def p_struct_declaration(p):
-    """struct_declaration : specifier_qualifier_list struct_declarator_list ';' """
-    p[0] = ("struct_declaration",) + tuple(p[-len(p)+1:])
 
 def p_specifier_qualifier_list(p):
     """specifier_qualifier_list : type_specifier specifier_qualifier_list
     | type_specifier"""
     p[0] = ("specifier_qualifier_list",) + tuple(p[-len(p)+1:])
 
-def p_struct_declarator_list(p):
-    """struct_declarator_list : struct_declarator
-    | struct_declarator_list ',' struct_declarator"""
-    p[0] = ("struct_declarator_list",) + tuple(p[-len(p)+1:])
-
-def p_struct_declarator(p):
-    """struct_declarator : declarator
-    | ':' constant_expression
-    | declarator ':' constant_expression"""
-    p[0] = ("struct_declarator",) + tuple(p[-len(p)+1:])
 
 def p_declarator(p):
     """declarator : pointer direct_declarator
@@ -483,10 +411,7 @@ def p_parameter_declaration(p):
 def p_identifier_list(p):
     """identifier_list : ID
     | identifier_list ',' ID"""
-    if len(p)==2:
-        p[0]=[p[1]]
-    else:
-        p[0] = p[1]+[p[3]]
+    p[0] = ("identifier_list",) + tuple(p[-len(p)+1:])
 
 def p_type_name(p):
     """type_name : specifier_qualifier_list
@@ -520,11 +445,8 @@ def p_initializer(p):
 def p_initializer_list(p):
     """initializer_list : initializer
     | initializer_list ',' initializer"""
-    if len(p)==2:
-        p[0]=[p[1]]
-    else:
-        p[0] = p[1]+[p[3]]
-        
+    p[0] = ("initializer_list",) + tuple(p[-len(p)+1:])
+
 def p_statement(p):
     """statement : input_statement
     | output_statement
@@ -539,13 +461,16 @@ def p_compound_statement(p):
     """compound_statement : '{' statement_list '}'
     | '{' declaration_list '}'
     | '{' declaration_list statement_list '}'"""
-    
+    if len(p)==4:
+        p[0] = Node("statement","compound",value=p[2])
+    else:
+        p[0] = Node("statement","compound",value = p[2]+p[3])
 
 def p_declaration_list(p):
     """declaration_list : declaration
     | declaration_list declaration"""
     if len(p)==2:
-        p[0]=[p[1]]
+        p[0] = [p[1]]
     else:
         p[0] = p[1]+[p[2]]
 
@@ -553,7 +478,7 @@ def p_statement_list(p):
     """statement_list : statement
     | statement_list statement"""
     if len(p)==2:
-        p[0]=[p[1]]
+        p[0] = [p[1]]
     else:
         p[0] = p[1]+[p[2]]
 
@@ -561,35 +486,38 @@ def p_expression_statement(p):
     """expression_statement : ';'
     | expression ';'"""
     if len(p)==2:
-        p[0]=Node("statement","expression")
+        p[0] = Node("statement","expression")
     else:
-        p[0]=Node("statement","expression",value=p[1])
+        p[0] = Node("statement","expression",value=p[1])
 
 def p_selection_statement(p):
     """selection_statement : IF '(' expression ')' statement
     | IF '(' expression ')' statement ELSE statement"""
-    if len(p)==6:
-        p[0] = Node("statement","IF",children={"condition":p[3],"block":p[5]})
-    else:
-        p[0] = Node("statement","IF_ELSE",children={"condition":p[3],"IF_block":p[5],"ELSE_block":p[7]})        
+    p[0] = Node("statement","IF",children={"condition":p[3],"IF_BLOCK":p[5],"ELSE_BLOCK":None})
+    if len(p)==8:
+        p[0].children["ELSE_BLOCK"]=p[7]
 
 def p_iteration_statement(p):
-    """iteration_statement : WHILE '(' expression ')' statement
-    | FOR '(' expression_statement expression_statement expression ')' statement"""
-    if len(p)==6:
-        p[0] = Node("statement","WHILE",children={"condition":p[3],"block":p[5]})
-    else:
-        p[0] = Node("statement","FOR",children={"init":p[3],"condition":p[4],"update":p[5],"block":p[7]})
-    
+    """iteration_statement : while_st
+    | for_st"""
+    p[0] = p[1]
+
+def p_while_st(p):
+    """while_st : WHILE '(' expression ')' statement"""
+    p[0] = Node("statement","WHILE",children={"condition":p[3], "BLOCK":p[5]})
+
+def p_for_st(p):
+    """for_st : FOR '(' expression_statement expression_statement expression ')' statement"""
+    p[0] = Node("statement","FOR",children={"init":p[3],"condition":p[4],"update":p[5], "BLOCK":p[7]})
+
 def p_jump_statement(p):
     """jump_statement : CONTINUE ';'
     | BREAK ';'
     | RETURN ';'
     | RETURN expression ';'"""
-    if len(p)==3:
-        p[0] = Node("statement",p[1])
-    else:
-        p[0] = Node("statement",p[1],children={"value":p[2]})
+    p[0] = Node("statement","jump",value=p[1])
+    if len(p)==4:
+        p[0].children = {"return":p[2]}
 
 def p_translation_unit(p):
     """translation_unit : external_declaration
@@ -613,12 +541,11 @@ def p_function_definition(p):
     
 def p_input_statement(p):
     """input_statement : CIN IN id ';'"""
-    
-    p[0] = Node("statement",p[1],value=p[3])
+    p[0] = Node("statement","input",value=p[3])
 
 def p_output_statement(p):
     """output_statement : COUT output_list ';'"""
-    p[0]=Node("statement",p[1],value=p[2])
+    p[0]=Node("statement","output",value=p[2])
     
 def p_output_list(p):
     """output_list : OUT primary_expression
@@ -691,9 +618,9 @@ if __name__ == "__main__":
         push_scope(new_scope(get_current_symtab()))
         populate_global_symbol_table()
         result = parser.parse(inp)
-        if len(GLOBAL_ERROR_LIST)==0:
+        if len(ERROR)==0:
             pop_scope()
             make_ast(result)
         else:
-            for err in GLOBAL_ERROR_LIST:
-                print(err)       
+            for err in ERROR:
+                print(err)   
