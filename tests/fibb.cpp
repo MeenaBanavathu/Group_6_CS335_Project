@@ -3,11 +3,12 @@ int fib(int n){
     if(n==0 || n==1){
         return 1;
     }
-    return fib(n-1)+fib(n-2);
+    return n;
 }
 int main(){
-    int n;
+    int n,i;
     cin>>n;
-    cout<<fib(n);
+    i=fib(n);
+    cout<<i;
     return 0;
 }

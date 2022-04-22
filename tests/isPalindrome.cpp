@@ -1,20 +1,18 @@
 int main()
 {
-     int n, num, digit, rev = 0;
-
+     int n, num, digit, rev;
+     rev=0;
      cout << "Enter a positive number: ";
-     num = 22987
-
+     cin>>num;
      n = num;
-
-     do
+     while(num!=0)
      {
          digit = num % 10;
          rev = (rev * 10) + digit;
          num = num / 10;
-     } while (num != 0);
+     }
 
-     cout << " The reverse of the number is: " << rev << endl;
+     cout << " The reverse of the number is: " << rev << "\n";
 
      if (n == rev)
          cout << " The number is a palindrome.";

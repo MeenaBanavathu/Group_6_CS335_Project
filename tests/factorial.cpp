@@ -1,13 +1,15 @@
 int factorial(int n){
-    int res=1;
-    for(int i=2;i<=n;i++){
+    int res,i;
+    res=1;
+    for(i=2;i<=n;i++){
         res=res*i;
     }
     return res;
 }
 int main(){
-    int a;
+    int a,i;
     cin>>a;
-    cout<<factorial(a);
+    i = factorial(a);
+    cout<<i;
     return 0;
 }
