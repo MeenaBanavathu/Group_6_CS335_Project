@@ -1,13 +1,14 @@
 import pydot
 
 class Node:
-    def __init__(self,name,_type,is_array=0,ptr_level=0,children=None,_value=None):
+    def __init__(self,name,_type,is_array=0,ptr_level=0,children=None,_value=None,code=[]):
         self.name = name
         self._type = _type
         self.is_array = is_array
         self._value = _value
         self.ptr_level = ptr_level
         self.children = children
+        self.code = code
 
 def make_node(graph,nd,k='_'):
     if isinstance(nd,Node):
