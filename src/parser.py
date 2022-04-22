@@ -1,32 +1,27 @@
 import sys
 import os
 import scanner
+import pydot
 import ply.yacc as yacc
 from symtab import (
+    SYMBOL_TABLES,
     pop_scope,
     push_scope,
     new_scope,
     get_current_symtab,
-    get_default_value,
-    DATATYPE,
-    SYMBOL_TABLES,
 )
+from draw import make_ast,Node
 
-class Node:
-    def __init__(self,name,_type,is_array=0,children=None,value=None):
-        self.name = name
-        self._type = _type
-        self.is_array = is_array
-        self.value = value
-        self.children = children
-
+INIT_PARAMETERS={"type":[],"declarations":[]}
+LAST_FUNCTION = None
+INCOMING_FUNCTION = False
 ERROR = []
 
 tokens = scanner.scanner.tokens
 literals = scanner.scanner.literals
 flag_for_error = 0
 
-start = "translation_unit"
+start = "start"
 
 def p_primary_expression(p):
     """primary_expression : id
@@ -36,7 +31,14 @@ def p_primary_expression(p):
     | char
     | '(' expression ')' """
     if len(p)==4:
-        p[0]=p[2]
+        if isinstance(p[2],list):
+            if len(p[2])>1:
+                err_msg = "Comma saperated multiple expressions in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            p[0]=p[2][0]
+        else:
+            p[0] = p[2]
     else:
         p[0]=p[1]
     
@@ -45,7 +47,7 @@ def p_id(p):
     symtab = get_current_symtab()
     i = symtab.lookup(p[1])
     if i is None:
-        err_msg = "Identifier not declared on line "+str(p.lineno(1))
+        err_msg = "Identifier "+p[1]+" not declared on line "+str(p.lineno(1))
         ERROR.append(err_msg)
         raise SyntaxError
     arr = 0
@@ -54,24 +56,24 @@ def p_id(p):
         arr = i["is_array"]
     elif i["kind"]==1:
         _type = i["return type"]
-    p[0] = Node("identifier",_type,arr,value=p[1])
+    p[0] = Node("identifier",_type,arr,_value=p[1])
 
 def p_str(p):
     """str : STRING"""
-    p[0] = Node("constant","char",is_array=1,value=p[1])
+    p[0] = Node("constant","char",is_array=1,_value=p[1])
     
 def p_int(p):
     """int : INTEGER"""
-    p[0] = Node("constant","int",value=p[1])
+    p[0] = Node("constant","int",_value=p[1])
     
 def p_char(p):
     """char : CHARACTER"""
-    p[0] = Node("constant","char",value=p[1])
+    p[0] = Node("constant","char",_value=p[1])
     
 def p_bool(p):
     """bool : TRUE
     | FALSE"""
-    p[0] = Node("constant","bool",value=p[1])
+    p[0] = Node("constant","bool",_value=p[1])
 
 def p_postfix_expression(p):
     """postfix_expression : primary_expression
@@ -80,10 +82,10 @@ def p_postfix_expression(p):
     | postfix_expression '(' argument_expression_list ')'
     | postfix_expression INC
     | postfix_expression DEC"""
+    symtab=get_current_symtab()
     if len(p)==2:
         p[0]=p[1]
     elif len(p)==3:
-        symtab=get_current_symtab()
         name = p[2]+'('+p[1]._type.lower()+')'
         i = symtab.lookup(name)
         if i is None:
@@ -92,19 +94,19 @@ def p_postfix_expression(p):
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:[p[1]]})
     elif len(p)==4:
-        name = p[1].value+"()"
+        name = p[1]._value+"()"
         i = symtab.lookup(name)
         if i is None:
-            err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
+            err_msg = "Incompatible type for "+p[1]._value+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
         p[0] = Node("function call",i["return type"],children={i["name"]:None})       
     elif len(p)==5:
         if p[2]=='(':
-            name = p[1].value+'('+','.join(p[3])+')'
+            name = p[1]._value+'('+','.join([i._type for i in p[3]])+')'
             i = symtab.lookup(name)
             if i is None:
-                err_msg = "Incompatible type for "+p[1].value+" in line "+str(p.lineno(1))
+                err_msg = "Incompatible type for "+p[1]._value+" in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
                 raise SyntaxError
             p[0] = Node("function call",i["return type"],children={i["name"]:p[3]})
@@ -310,11 +312,13 @@ def p_assignment_expression(p):
                 ERROR.append(err_msg)
                 raise SyntaxError
             temp = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        else:
+            temp = p[3]
         symtab=get_current_symtab()
         name = '='+'('+p[1]._type.lower()+','+temp._type.lower()+')'
         i = symtab.lookup(name)
         if i is None:
-            err_msg = "Incompatible types for = in line "+str(p.lineno(1))
+            err_msg = "Incompatible types for = in line "+str(p.lineno(1))+" "+name
             ERROR.append(err_msg)
             raise SyntaxError
         temp = Node("function call",i["return type"],children={i["name"]:[p[1],temp]})
@@ -344,43 +348,42 @@ def p_constant_expression(p):
     p[0] = p[1]
 
 def p_declaration(p):
-    """declaration : declaration_specifiers ';'
-    | declaration_specifiers init_declarator_list ';'"""
-    p[0] = 
+    """declaration : type_specifier init_declarator_list ';'"""
+    for i in p[2]:
+        i._type = p[1].lower()
+    p[0] = Node("statement","declaration",_value=p[2])
+    symtab = get_current_symtab()
+    for i in p[2]:
+        entry = {"name":i._value,"type":i._type,"ptr_level":i.ptr_level,"is_array":i.is_array}
+        if (i.children is not None) and (i.children.get("dims",None) is not None):
+            entry["dimensions"] = i.children["dims"]
+        symtab.insert(entry,0)
 
-def p_declaration_specifiers(p):
-    """declaration_specifiers : type_specifier
-    | type_specifier declaration_specifiers"""
-    p[0] = ("declaration_specifiers",) + tuple(p[-len(p)+1:])
 
 def p_init_declarator_list(p):
-    """init_declarator_list : init_declarator
-    | init_declarator_list ',' init_declarator"""
-    p[0] = ("init_declarator_list",) + tuple(p[-len(p)+1:])
-
-def p_init_declarator(p):
-    """init_declarator : declarator
-    | declarator '=' initializer"""
-    p[0] = ("init_declarator",) + tuple(p[-len(p)+1:])
+    """init_declarator_list : declarator
+    | init_declarator_list ',' declarator"""
+    if len(p)==2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1]+[p[3]]
 
 def p_type_specifier(p):
     """type_specifier : VOID
     | CHAR
     | INT
     | BOOL"""
-    p[0] = ("type_specifier",) + tuple(p[-len(p)+1:])
-
-
-def p_specifier_qualifier_list(p):
-    """specifier_qualifier_list : type_specifier specifier_qualifier_list
-    | type_specifier"""
-    p[0] = ("specifier_qualifier_list",) + tuple(p[-len(p)+1:])
+    p[0] = p[1]
 
 
 def p_declarator(p):
     """declarator : pointer direct_declarator
     | direct_declarator"""
-    p[0] = ("declarator",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0] = p[1]
+    else:
+        p[0] = p[2]
+        p[0].ptr_level = p[2].ptr_level+p[1]
 
 def p_direct_declarator(p):
     """direct_declarator : ID
@@ -388,64 +391,82 @@ def p_direct_declarator(p):
     | direct_declarator '[' constant_expression ']'
     | direct_declarator '[' ']'
     | direct_declarator '(' parameter_list ')'
-    | direct_declarator '(' identifier_list ')'
     | direct_declarator '(' ')'"""
-    p[0] = ("direct_declarator",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0]=Node("identifier","undeclared",_value=p[1])
+    elif len(p)==4:
+        if p[1]=='(':
+            p[0]=p[2]
+        elif p[2]=='(':
+            if p[1].name=="identifier" and p[1]._type=="undeclared" and p[1].is_array==0:
+                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":[]})
+            else:
+                err_msg="Error in function name in function declaration in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+        elif p[2]=='[':
+            if p[1].name=="identifier" and p[1]._type=="undeclared":
+                p[1].is_array=1
+                p[1].ptr_level+=1
+                if not p[1].children is None and p[1].children.get("dims",False):
+                    p[1].children["dims"].append(None)
+                else:
+                    p[1].children = {"dims":[None,]}  
+                p[0]=p[1]
+            else:
+                err_msg="Error in array declaration in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+    else:
+        if p[2]=='(':
+            if p[1].name=="identifier" and p[1]._type=="undeclared" and p[1].is_array==0:
+                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":p[3]})
+            else:
+                err_msg="Error in function name in function declaration in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+        elif p[2]=='[':
+            if p[1].name=="identifier" and p[1]._type=="undeclared" and p[3]._type.lower()=="int":
+                p[1].is_array=1
+                p[1].ptr_level+=1
+                ndims = 0
+                if p[3].name=="constant" and p[3]._type=="int":
+                    ndims = p[3]._value
+                else:
+                    ndims = p[3]
+                if not p[1].children is None and p[1].children.get("dims",False):
+                    p[1].children["dims"].append(ndims)
+                else:
+                    p[1].children = {"dims":[ndims,]}  
+                p[0]=p[1]
+            else:
+                err_msg="Error in array declaration in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+
 
 def p_pointer(p):
     """pointer : '*'
     | '*' pointer"""
-    p[0] = ("pointer",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0] = 1
+    else:
+        p[0] = 1+p[1]
 
 def p_parameter_list(p):
     """parameter_list : parameter_declaration
     | parameter_list ',' parameter_declaration"""
-    p[0] = ("parameter_list",) + tuple(p[-len(p)+1:])
+    if len(p)==2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1]+[p[3]]
 
 def p_parameter_declaration(p):
-    """parameter_declaration : declaration_specifiers declarator
-    | declaration_specifiers abstract_declarator
-    | declaration_specifiers"""
-    p[0] = ("parameter_declaration",) + tuple(p[-len(p)+1:])
-
-def p_identifier_list(p):
-    """identifier_list : ID
-    | identifier_list ',' ID"""
-    p[0] = ("identifier_list",) + tuple(p[-len(p)+1:])
-
-def p_type_name(p):
-    """type_name : specifier_qualifier_list
-    | specifier_qualifier_list abstract_declarator"""
-    p[0] = ("type_name",) + tuple(p[-len(p)+1:])
-
-def p_abstract_declarator(p):
-    """abstract_declarator : pointer
-    | direct_abstract_declarator
-    | pointer direct_abstract_declarator"""
-    p[0] = ("abstract_declarator",) + tuple(p[-len(p)+1:])
-
-def p_direct_abstract_declarator(p):
-    """direct_abstract_declarator : '(' abstract_declarator ')'
-    | '[' ']'
-    | '[' constant_expression ']'
-    | direct_abstract_declarator '[' ']'
-    | direct_abstract_declarator '[' constant_expression ']'
-    | '(' ')'
-    | '(' parameter_list ')'
-    | direct_abstract_declarator '(' ')'
-    | direct_abstract_declarator '(' parameter_list ')'"""
-    p[0] = ("direct_abstract_declarator",) + tuple(p[-len(p)+1:])
-
-def p_initializer(p):
-    """initializer : assignment_expression
-    | '{' initializer_list '}'
-    | '{' initializer_list ',' '}'"""
-    p[0] = ("initializer",) + tuple(p[-len(p)+1:])
-
-def p_initializer_list(p):
-    """initializer_list : initializer
-    | initializer_list ',' initializer"""
-    p[0] = ("initializer_list",) + tuple(p[-len(p)+1:])
+    """parameter_declaration : type_specifier declarator"""
+    global INIT_PARAMETERS
+    INIT_PARAMETERS["type"].append(p[1])
+    INIT_PARAMETERS["declarations"].append(p[2])
+    p[0] = Node("parameter",p[1],_value=p[2])
 
 def p_statement(p):
     """statement : input_statement
@@ -458,13 +479,13 @@ def p_statement(p):
     p[0] = p[1]
 
 def p_compound_statement(p):
-    """compound_statement : '{' statement_list '}'
-    | '{' declaration_list '}'
-    | '{' declaration_list statement_list '}'"""
+    """compound_statement : lbrace statement_list rbrace
+    | lbrace declaration_list rbrace
+    | lbrace declaration_list statement_list rbrace"""
     if len(p)==4:
-        p[0] = Node("statement","compound",value=p[2])
+        p[0] = Node("statement","compound",_value=p[2],children={"local scope":p[1]})
     else:
-        p[0] = Node("statement","compound",value = p[2]+p[3])
+        p[0] = Node("statement","compound",_value = p[2]+p[3],children={"local scope":p[1]})
 
 def p_declaration_list(p):
     """declaration_list : declaration
@@ -488,7 +509,7 @@ def p_expression_statement(p):
     if len(p)==2:
         p[0] = Node("statement","expression")
     else:
-        p[0] = Node("statement","expression",value=p[1])
+        p[0] = Node("statement","expression",_value=p[1])
 
 def p_selection_statement(p):
     """selection_statement : IF '(' expression ')' statement
@@ -515,9 +536,13 @@ def p_jump_statement(p):
     | BREAK ';'
     | RETURN ';'
     | RETURN expression ';'"""
-    p[0] = Node("statement","jump",value=p[1])
+    p[0] = Node("statement","jump",_value=p[1])
     if len(p)==4:
         p[0].children = {"return":p[2]}
+
+def p_start(p):
+    """start : translation_unit"""
+    p[0] = Node("start","None",_value=p[1])
 
 def p_translation_unit(p):
     """translation_unit : external_declaration
@@ -533,19 +558,29 @@ def p_external_declaration(p):
     p[0] = p[1]
 
 def p_function_definition(p):
-    """function_definition : declaration_specifiers declarator declaration_list compound_statement
-    | declaration_specifiers declarator compound_statement
-    | declarator declaration_list compound_statement
-    | declarator compound_statement"""
-    p[0] = ("function_definition",) + tuple(p[-len(p)+1:])
+    """function_definition : type_specifier declarator compound_statement"""
+    global INCOMING_FUNCTION,LAST_FUNCTION
+    if p[2].name!="function" and p[2]._type!="undeclared":
+        err_msg = "Error in function declaration at line "+str(p.lineno(1))
+        ERROR.append(err_msg)
+        raise SyntaxError
+    p[2]._type=p[1].lower()
+    param = [i._type+'*'*i._value.ptr_level for i in p[2].children["parameters"]]
+    entry = {"name":p[2]._value,"return type":p[1].lower(),"ptr_level":p[2].ptr_level,"parameter types":param,"local scope":p[3].children["local scope"]}
+    symtab = get_current_symtab()
+    symtab.insert(entry,1)
+    INCOMING_FUNCTION=True
+    LAST_FUNCTION = entry["name"]+'('+','.join(entry["parameter types"]) +')'
+    p[2].children["BLOCK"]=p[3]
+    p[0]=p[2]
     
 def p_input_statement(p):
     """input_statement : CIN IN id ';'"""
-    p[0] = Node("statement","input",value=p[3])
+    p[0] = Node("statement","input",_value=p[3])
 
 def p_output_statement(p):
     """output_statement : COUT output_list ';'"""
-    p[0]=Node("statement","output",value=p[2])
+    p[0]=Node("statement","output",_value=p[2])
     
 def p_output_list(p):
     """output_list : OUT primary_expression
@@ -554,7 +589,44 @@ def p_output_list(p):
         p[0]=[p[2]]
     else:
         p[0]=p[1]+[p[3]]
-    
+
+#check
+def p_lbrace(p):
+    """lbrace : '{'"""
+    global INCOMING_FUNCTION, LAST_FUNCTION
+    push_scope(new_scope(get_current_symtab(), LAST_FUNCTION if INCOMING_FUNCTION else None))
+    symTab = get_current_symtab()
+    global INIT_PARAMETERS
+    if len(INIT_PARAMETERS["type"])!=0:
+        for i in range(len(INIT_PARAMETERS["type"])):
+            curr = INIT_PARAMETERS["declarations"][i]
+            if curr.name!="identifier":
+                err_msg = "Wrong parameter used in line "+str(p.lineno(1))
+                ERROR.append(err_msg)
+                raise SyntaxError
+            if curr.children is None:
+                dims=None
+            else:
+                dims = curr.children.get("dims",None)
+            entry = {"name":curr._value,"type":INIT_PARAMETERS["type"][i].lower(),"is_array":curr.is_array,"ptr_level":curr.ptr_level,"dimensions":dims}
+            symTab.insert(entry,0)
+        INIT_PARAMETERS = {"type":[],"declarations":[]}
+    p[0] = symTab
+
+
+def p_rbrace(p):
+    """rbrace : '}'"""
+    global LAST_POPPED_TABLE,INCOMING_FUNCTION,LAST_FUNCTION
+    LAST_POPPED_TABLE = pop_scope()
+    while not LAST_POPPED_TABLE is None:
+        if LAST_POPPED_TABLE in SYMBOL_TABLES:
+            break
+        LAST_POPPED_TABLE=LAST_POPPED_TABLE.parent
+    if LAST_POPPED_TABLE==None:
+        INCOMING_FUNCTION=False
+    else:
+        LAST_FUNCTION = LAST_POPPED_TABLE.func_scope
+
 def p_error(p):
     global flag_for_error
     flag_for_error = 1
@@ -566,7 +638,7 @@ def p_error(p):
         print("Unexpected end of input")
 
 parser = yacc.yacc()
-#done
+
 def populate_global_symbol_table():
     table = get_current_symtab()
     for op in ("+", "-"):
@@ -609,7 +681,6 @@ def populate_global_symbol_table():
         _type = _type.lower()
         table.insert({"name": "[]", "return type": _type, "parameter types": [f"{_type}*", "int"]}, 1)
 
-#done
 if __name__ == "__main__":
     if(len(sys.argv) == 2):
         file = sys.argv[1]
@@ -620,7 +691,9 @@ if __name__ == "__main__":
         result = parser.parse(inp)
         if len(ERROR)==0:
             pop_scope()
-            make_ast(result)
+            graph = pydot.Dot("my_graph", graph_type='graph')
+            make_ast(graph,result)
+            graph.write_dot('AST.dot')
         else:
             for err in ERROR:
                 print(err)   
