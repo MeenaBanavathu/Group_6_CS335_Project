@@ -10,7 +10,20 @@ from symtab import (
     new_scope,
     get_current_symtab,
 )
-from draw import make_ast,Node
+from draw import make_ast,Node,get_tac
+
+LABEL_CNT=0
+TEMP_VAR=0
+
+def get_label():
+    global LABEL_CNT
+    LABEL_CNT+=1
+    return "L"+str(LABEL_CNT)
+
+def get_var():
+    global TEMP_VAR
+    TEMP_VAR+=1
+    return "VAR"+str(TEMP_VAR)
 
 INIT_PARAMETERS={"type":[],"declarations":[]}
 LAST_FUNCTION = None
@@ -23,6 +36,7 @@ flag_for_error = 0
 
 start = "start"
 
+#done
 def p_primary_expression(p):
     """primary_expression : id
     | int
@@ -31,21 +45,15 @@ def p_primary_expression(p):
     | char
     | '(' expression ')' """
     if len(p)==4:
-        if isinstance(p[2],list):
-            if len(p[2])>1:
-                err_msg = "Comma saperated multiple expressions in line "+str(p.lineno(1))
-                ERROR.append(err_msg)
-                raise SyntaxError
-            p[0]=p[2][0]
-        else:
-            p[0] = p[2]
+        p[0] = p[2][0]
     else:
         p[0]=p[1]
-    
+
+#done 
 def p_id(p):
     """id : ID"""
     symtab = get_current_symtab()
-    i = symtab.lookup(p[1])
+    i = symtab.lookup(p[1],1)
     if i is None:
         err_msg = "Identifier "+p[1]+" not declared on line "+str(p.lineno(1))
         ERROR.append(err_msg)
@@ -56,29 +64,33 @@ def p_id(p):
         arr = i["is_array"]
     elif i["kind"]==1:
         _type = i["return type"]
-    p[0] = Node("identifier",_type,arr,_value=p[1])
+    p[0] = Node("identifier",_type,arr,_value=p[1],place=i["name"])
 
+#done
 def p_str(p):
     """str : STRING"""
-    p[0] = Node("constant","char",is_array=1,_value=p[1])
-    
+    _place = get_var()
+    p[0] = Node("constant","char",is_array=1,_value=p[1],place=_place,code=[[_place,"=",p[1]]])
+
+#done    
 def p_int(p):
-    """int : INTEGER
-    | '-' INTEGER """
-    if len(p)==2:
-        p[0] = Node("constant","int",_value=p[1])
-    else:
-        p[0] = Node("constant","int",_value=-1*p[1])
-    
+    """int : INTEGER"""
+    p[0] = Node("constant","int",_value=p[1],place=str(p[1]))
+
+#done    
 def p_char(p):
     """char : CHARACTER"""
-    p[0] = Node("constant","char",_value=p[1])
-    
+    _place = get_var()
+    p[0] = Node("constant","char",_value=p[1],place=_place,code=[[_place,"=",p[1]]])
+
+#done   
 def p_bool(p):
     """bool : TRUE
     | FALSE"""
-    p[0] = Node("constant","bool",_value=p[1])
+    _place = get_var()
+    p[0] = Node("constant","bool",_value=p[1],place=_place,code=[[_place,"=",p[1]]])
 
+#done
 def p_postfix_expression(p):
     """postfix_expression : primary_expression
     | postfix_expression '[' expression ']'
@@ -96,7 +108,7 @@ def p_postfix_expression(p):
             err_msg = "Incompatible type for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1]]})
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1]]},place=p[1].place,code=p[1].code+[[p[1].place,"=",p[1].place,p[2][0],"1"]])
     elif len(p)==4:
         name = p[1]._value+"()"
         i = symtab.lookup(name)
@@ -104,7 +116,9 @@ def p_postfix_expression(p):
             err_msg = "Incompatible type for "+p[1]._value+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:None})       
+        _place = get_var()
+        _code = [["STORE PARENT VARS"]]+p[1].code+[["JAL",p[1].place],[_place,"=","RET_VAL"]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:None},place=_place,code=_code)    
     elif len(p)==5:
         if p[2]=='(':
             name = p[1]._value+'('+','.join([i._type for i in p[3]])+')'
@@ -113,7 +127,15 @@ def p_postfix_expression(p):
                 err_msg = "Incompatible type for "+p[1]._value+" in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
                 raise SyntaxError
-            p[0] = Node("function call",i["return type"],children={i["name"]:p[3]})
+            _place = get_var()
+            _code = [["STORE PARENT VARS"]]+p[1].code
+            temp = []
+            for j in p[3]:
+                _code+=j.code
+                temp+=[["STORE",j.place]]
+            _code+=temp
+            _code+=[["JAL",p[1].place],[_place,"=","RET_VAL"]]
+            p[0] = Node("function call",i["return type"],children={i["name"]:p[3]},place=_place,code=_code)
         else:
             name = '[]('+p[1]._type+','+p[3]._type+')'
             i = symtab.lookup(name)
@@ -121,8 +143,11 @@ def p_postfix_expression(p):
                 err_msg = "Incompatible type for [] in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
                 raise SyntaxError
-            p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
-    
+            _place = get_var()
+            _code = p[1].code+p[3][0].code+[[_place,"=","GETIDX",p[1].place,p[3][0].place]]
+            p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
+
+#done    
 def p_argument_expression_list(p):
     """argument_expression_list : assignment_expression
     | argument_expression_list ',' assignment_expression"""
@@ -131,6 +156,7 @@ def p_argument_expression_list(p):
     else:
         p[0] = p[1]+[p[3]]
 
+#done
 def p_unary_expression(p):
     """unary_expression : postfix_expression
     | INC unary_expression
@@ -146,8 +172,14 @@ def p_unary_expression(p):
             err_msg = "Incompatible type for "+p[1]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[2]]})
+        _code = p[2].code
+        if p[1]=='++' or p[1]=='--':
+            _code+=[[p[2].place,"=",p[2].place,p[1][0],"1"]]
+        else:
+            _code+=[[p[2].place,"=",p[1],p[2].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[2]]},place=p[2].place,code=_code)
 
+#done
 def p_unary_operator(p):
     """unary_operator : '&'
     | '*'
@@ -157,7 +189,7 @@ def p_unary_operator(p):
     | '!'"""
     p[0]=p[1]
 
-
+#done
 def p_multiplicative_expression(p):
     """multiplicative_expression : unary_expression
     | multiplicative_expression '*' unary_expression
@@ -173,8 +205,11 @@ def p_multiplicative_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_additive_expression(p):
     """additive_expression : multiplicative_expression
     | additive_expression '+' multiplicative_expression
@@ -189,8 +224,11 @@ def p_additive_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_relational_expression(p):
     """relational_expression : additive_expression
     | relational_expression '<' additive_expression
@@ -207,8 +245,11 @@ def p_relational_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_equality_expression(p):
     """equality_expression : relational_expression
     | equality_expression EQUAL relational_expression
@@ -223,8 +264,11 @@ def p_equality_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_and_expression(p):
     """and_expression : equality_expression
     | and_expression '&' equality_expression"""
@@ -238,8 +282,11 @@ def p_and_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_exclusive_or_expression(p):
     """exclusive_or_expression : and_expression
     | exclusive_or_expression '^' and_expression"""
@@ -253,8 +300,11 @@ def p_exclusive_or_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_inclusive_or_expression(p):
     """inclusive_or_expression : exclusive_or_expression
     | inclusive_or_expression '|' exclusive_or_expression"""
@@ -268,8 +318,11 @@ def p_inclusive_or_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_logical_and_expression(p):
     """logical_and_expression : inclusive_or_expression
     | logical_and_expression AND inclusive_or_expression"""
@@ -283,8 +336,11 @@ def p_logical_and_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
+#done
 def p_logical_or_expression(p):
     """logical_or_expression : logical_and_expression
     | logical_or_expression OR logical_and_expression"""
@@ -298,9 +354,11 @@ def p_logical_or_expression(p):
             err_msg = "Incompatible types for "+p[2]+" in line "+str(p.lineno(1))
             ERROR.append(err_msg)
             raise SyntaxError
-        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
+        _place = get_var()
+        _code = p[1].code+p[3].code+[[_place,"=",p[1].place,p[2],p[3].place]]
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]},place=_place,code=_code)
 
-
+#done
 def p_assignment_expression(p):
     """assignment_expression : logical_or_expression
     | unary_expression assignment_operator assignment_expression"""
@@ -315,9 +373,11 @@ def p_assignment_expression(p):
                 err_msg = "Incompatible types for "+p[2][0]+" in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
                 raise SyntaxError
+            _code = p[3].code+p[1].code+[p[1].place,"=",p[1].place,p[2][0],p[3].place]
             temp = Node("function call",i["return type"],children={i["name"]:[p[1],p[3]]})
         else:
             temp = p[3]
+            _code = p[3].code+p[1].code+[[p[1].place,"=",temp.place]]
         symtab=get_current_symtab()
         name = '='+'('+p[1]._type.lower()+','+temp._type.lower()+')'
         i = symtab.lookup(name)
@@ -325,8 +385,9 @@ def p_assignment_expression(p):
             err_msg = "Incompatible types for = in line "+str(p.lineno(1))+" "+name
             ERROR.append(err_msg)
             raise SyntaxError
-        temp = Node("function call",i["return type"],children={i["name"]:[p[1],temp]})
+        p[0] = Node("function call",i["return type"],children={i["name"]:[p[1],temp]},code=_code,place=p[1].place)
 
+#done
 def p_assignment_operator(p):
     """assignment_operator : '='
     | MUL_EQ
@@ -339,6 +400,7 @@ def p_assignment_operator(p):
     | OR_EQ"""
     p[0] = p[1]
 
+#done
 def p_expression(p):
     """expression : assignment_expression
     | expression ',' assignment_expression"""
@@ -347,6 +409,7 @@ def p_expression(p):
     else:
         p[0] = p[1]+[p[3]]
 
+#done
 def p_constant_expression(p):
     """constant_expression : logical_or_expression"""
     p[0] = p[1]
@@ -363,7 +426,7 @@ def p_declaration(p):
             entry["dimensions"] = i.children["dims"]
         symtab.insert(entry,0)
 
-
+#done
 def p_init_declarator_list(p):
     """init_declarator_list : declarator
     | init_declarator_list ',' declarator"""
@@ -372,6 +435,7 @@ def p_init_declarator_list(p):
     else:
         p[0] = p[1]+[p[3]]
 
+#done
 def p_type_specifier(p):
     """type_specifier : VOID
     | CHAR
@@ -379,7 +443,7 @@ def p_type_specifier(p):
     | BOOL"""
     p[0] = p[1]
 
-
+#done
 def p_declarator(p):
     """declarator : pointer direct_declarator
     | direct_declarator"""
@@ -389,6 +453,7 @@ def p_declarator(p):
         p[0] = p[2]
         p[0].ptr_level = p[2].ptr_level+p[1]
 
+#done
 def p_direct_declarator(p):
     """direct_declarator : ID
     | '(' declarator ')'
@@ -397,13 +462,13 @@ def p_direct_declarator(p):
     | direct_declarator '(' parameter_list ')'
     | direct_declarator '(' ')'"""
     if len(p)==2:
-        p[0]=Node("identifier","undeclared",_value=p[1])
+        p[0]=Node("identifier","undeclared",_value=p[1],place=p[1])
     elif len(p)==4:
         if p[1]=='(':
             p[0]=p[2]
         elif p[2]=='(':
             if p[1].name=="identifier" and p[1]._type=="undeclared" and p[1].is_array==0:
-                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":[]})
+                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":[]},place=p[1].place,code=p[1].code+[[p[1].place+":"]])
             else:
                 err_msg="Error in function name in function declaration in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
@@ -424,7 +489,13 @@ def p_direct_declarator(p):
     else:
         if p[2]=='(':
             if p[1].name=="identifier" and p[1]._type=="undeclared" and p[1].is_array==0:
-                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":p[3]})
+                _code=p[1].code+[[p[1].place+":"]]
+                temp = []
+                for i in p[3]:
+                    _code+=i.code
+                    temp.append(["GET",i.place])
+                _code+=temp
+                p[0]=Node("function","undeclared",_value=p[1]._value,children={"parameters":p[3]},place=p[1].place,code=_code)
             else:
                 err_msg="Error in function name in function declaration in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
@@ -443,12 +514,13 @@ def p_direct_declarator(p):
                 else:
                     p[1].children = {"dims":[ndims,]}  
                 p[0]=p[1]
+                p[0].code+=p[3].code+[["ALLOC_MEM",p[1].place,p[3].place]]
             else:
                 err_msg="Error in array declaration in line "+str(p.lineno(1))
                 ERROR.append(err_msg)
                 raise SyntaxError
 
-
+#done
 def p_pointer(p):
     """pointer : '*'
     | '*' pointer"""
@@ -457,6 +529,7 @@ def p_pointer(p):
     else:
         p[0] = 1+p[1]
 
+#done
 def p_parameter_list(p):
     """parameter_list : parameter_declaration
     | parameter_list ',' parameter_declaration"""
@@ -465,13 +538,15 @@ def p_parameter_list(p):
     else:
         p[0] = p[1]+[p[3]]
 
+#done
 def p_parameter_declaration(p):
     """parameter_declaration : type_specifier declarator"""
     global INIT_PARAMETERS
     INIT_PARAMETERS["type"].append(p[1])
     INIT_PARAMETERS["declarations"].append(p[2])
-    p[0] = Node("parameter",p[1],_value=p[2])
+    p[0] = Node("parameter",p[1],_value=p[2],place=p[2].place)
 
+#done
 def p_statement(p):
     """statement : input_statement
     | output_statement
@@ -482,15 +557,24 @@ def p_statement(p):
     | jump_statement"""
     p[0] = p[1]
 
+#done
 def p_compound_statement(p):
     """compound_statement : lbrace statement_list rbrace
     | lbrace declaration_list rbrace
     | lbrace declaration_list statement_list rbrace"""
+    _code = []
     if len(p)==4:
-        p[0] = Node("statement","compound",_value=p[2],children={"local scope":p[1]})
+        for i in p[2]:
+            _code+=i.code
+        p[0] = Node("statement","compound",_value=p[2],children={"local scope":p[1]},code=_code)
     else:
-        p[0] = Node("statement","compound",_value = p[2]+p[3],children={"local scope":p[1]})
+        for i in p[2]:
+            _code+=i.code
+        for i in p[3]:
+            _code+=i.code
+        p[0] = Node("statement","compound",_value = p[2]+p[3],children={"local scope":p[1]},code=_code)
 
+#done
 def p_declaration_list(p):
     """declaration_list : declaration
     | declaration_list declaration"""
@@ -499,6 +583,7 @@ def p_declaration_list(p):
     else:
         p[0] = p[1]+[p[2]]
 
+#done
 def p_statement_list(p):
     """statement_list : statement
     | statement_list statement"""
@@ -507,34 +592,66 @@ def p_statement_list(p):
     else:
         p[0] = p[1]+[p[2]]
 
+#done
 def p_expression_statement(p):
     """expression_statement : ';'
     | expression ';'"""
     if len(p)==2:
         p[0] = Node("statement","expression")
     else:
-        p[0] = Node("statement","expression",_value=p[1])
+        _code = []
+        for i in p[1]:
+            _code += i.code
+        p[0] = Node("statement","expression",_value=p[1],code=_code)
 
+#done
 def p_selection_statement(p):
     """selection_statement : IF '(' expression ')' statement
     | IF '(' expression ')' statement ELSE statement"""
-    p[0] = Node("statement","IF",children={"condition":p[3],"IF_BLOCK":p[5],"ELSE_BLOCK":None})
+    l_else = get_label()
+    l_after = get_label()
+    if len(p)==8:
+        _code = p[3][0].code+[["IF",p[3][0].place,"==","0","GOTO",l_else]]+p[5].code+[["GOTO",l_after],[l_else,":"]]+p[7].code+[[l_after,":"]]
+    else:
+        _code = p[3][0].code+[["IF",p[3][0].place,"==","0","GOTO",l_after]]+p[5].code+[[l_after,":"]]
+    p[0] = Node("statement","IF",children={"condition":p[3],"IF_BLOCK":p[5],"ELSE_BLOCK":None},code=_code)
     if len(p)==8:
         p[0].children["ELSE_BLOCK"]=p[7]
 
+#done
 def p_iteration_statement(p):
     """iteration_statement : while_st
     | for_st"""
     p[0] = p[1]
 
+#done
 def p_while_st(p):
     """while_st : WHILE '(' expression ')' statement"""
-    p[0] = Node("statement","WHILE",children={"condition":p[3], "BLOCK":p[5]})
+    if len(p[3])>1:
+        err_msg = "More than one conditions in line "+str(p.lineno(1))
+        ERROR.append(err_msg)
+        raise SyntaxError
+    s_begin = get_label()
+    s_after = get_label()
+    _code = [[s_begin,":"]]+p[3][0].code+[["IF",p[3][0].place,"==","0","GOTO",s_after]]+p[5].code+[["GOTO",s_begin],[s_after,":"]]
+    p[0] = Node("statement","WHILE",children={"condition":p[3], "BLOCK":p[5]},code=_code)
 
+#done
 def p_for_st(p):
     """for_st : FOR '(' expression_statement expression_statement expression ')' statement"""
-    p[0] = Node("statement","FOR",children={"init":p[3],"condition":p[4],"update":p[5], "BLOCK":p[7]})
+    f_start = get_label()
+    f_after = get_label()
+    _code = p[3].code+[[f_start,":"]]
+    if p[4]._value!=None:
+        for i in p[4]._value:
+            _code+=i.code+[["IF",i.place,"==","0","GOTO",f_after]]
+    _code+=p[7].code
+    for i in p[5]:
+        _code+=i.code
+    _code+=[["GOTO",f_start],[f_after,":"]]
+    p[0] = Node("statement","FOR",children={"init":p[3],"condition":p[4],"update":p[5], "BLOCK":p[7]},code=_code)
 
+#done
 def p_jump_statement(p):
     """jump_statement : CONTINUE ';'
     | BREAK ';'
@@ -542,12 +659,24 @@ def p_jump_statement(p):
     | RETURN expression ';'"""
     p[0] = Node("statement","jump",_value=p[1])
     if len(p)==4:
-        p[0].children = {"return":p[2]}
+        p[0].children = {"return":p[2][0]}
+        p[0].code = [["STORE_RET",p[2][0].place],["RETURN"]]
+    elif p[1]=='return':
+        p[0].code = [["RETURN"]]
+    elif p[1]=='break':
+        p[0].code = [["BREAK"]]
+    else:
+        p[0].code = [["CONTINUE"]]
 
+#done
 def p_start(p):
     """start : translation_unit"""
-    p[0] = Node("start","None",_value=p[1])
+    _code=[]
+    for i in p[1]:
+        _code+=i.code
+    p[0] = Node("start","None",_value=p[1],code=_code)
 
+#done
 def p_translation_unit(p):
     """translation_unit : external_declaration
     | translation_unit external_declaration"""
@@ -556,11 +685,13 @@ def p_translation_unit(p):
     else:
         p[0] = p[1]+[p[2]]
 
+#done
 def p_external_declaration(p):
     """external_declaration : function_definition
     | declaration"""
     p[0] = p[1]
 
+#done
 def p_function_definition(p):
     """function_definition : type_specifier declarator compound_statement"""
     global INCOMING_FUNCTION,LAST_FUNCTION
@@ -576,16 +707,27 @@ def p_function_definition(p):
     INCOMING_FUNCTION=True
     LAST_FUNCTION = entry["name"]+'('+','.join(entry["parameter types"]) +')'
     p[2].children["BLOCK"]=p[3]
+    _code = p[2].code+p[3].code
     p[0]=p[2]
-    
+    p[0].code = _code
+
+#done    
 def p_input_statement(p):
     """input_statement : CIN IN id ';'"""
-    p[0] = Node("statement","input",_value=p[3])
+    p[0] = Node("statement","input",_value=p[3],code=p[3].code+[["INPUT",p[3].place]])
 
+#done
 def p_output_statement(p):
     """output_statement : COUT output_list ';'"""
-    p[0]=Node("statement","output",_value=p[2])
-    
+    _code=[]
+    temp = []
+    for i in p[2]:
+        _code+=i.code
+        temp+=[["OUT",i.place]]
+    _code+=temp
+    p[0]=Node("statement","output",_value=p[2],code=_code)
+
+#done   
 def p_output_list(p):
     """output_list : OUT primary_expression
     | output_list OUT primary_expression"""
@@ -698,6 +840,7 @@ if __name__ == "__main__":
             graph = pydot.Dot("my_graph", graph_type='graph')
             make_ast(graph,result)
             graph.write_dot('AST.dot')
+            get_tac(result.code)
         else:
             for err in ERROR:
                 print(err)   
