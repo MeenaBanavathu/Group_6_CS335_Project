@@ -12,6 +12,16 @@ TABLENUMBER = 0
 
 num_display_invocations = 0
 
+def get_default_value(_type):
+    if _type.upper()=="INT":
+        return 0
+    elif _type.upper()=="CHAR":
+        return ''
+    elif _type[-1] == "*":
+        return "NULL"
+    else:
+    	return -1
+
 class SymbolTable:
     # kind = 0 for ID
     #        1 for FN
@@ -33,8 +43,8 @@ class SymbolTable:
             self.table_name = f"BLOCK {self.table_number}"
 
     def insert(self, entry, kind=0):
-        # Variables (ID) -> {"name", "type", "value", "is_array", "dimensions", "pointer_lvl"}
-        # Functions (FN) -> {"name", "return type", "parameter types"}->symtab
+        # Variables (ID) -> {"name", "type", "value", "is_array", "dimension", "ptr_level"},"kind"
+        # Functions (FN) -> {"name", "return type", "parameter types","ptr_level"},"kind","local scope":symtab
         global DATATYPE
 
         prev_entry = self.lookup(entry["name"])
@@ -42,36 +52,19 @@ class SymbolTable:
         if prev_entry is None:
             name = entry["name"]
             entry["kind"] = kind
-            entry["pointer_lvl"] = entry.get("pointer_lvl", 0)
+            entry["ptr_level"] = entry.get("ptr_level", 0)
             if kind == 0:
                 t = self.lookup_type(entry["type"])
                 if not t:
                     raise Exception(f"{entry['type']}: not a valid data type")
                 entry["size"] = t
                 entry["value"] = entry.get("value", get_default_value(entry["type"]))
-                #check
-                entry["offset"] = compute_offset_size(entry["size"], entry["is_array"], entry.get("dimensions", []), entry, t)
-                #check
-                if entry["is_array"]:
-                    dims = entry["dimensions"]
-                    ndims = []
-                    for dim in dims:
-                        if dim == "variable":
-                            continue
-                        if isinstance(dim, str):
-                            _l = self.lookup(dim)
-                            if _l["type"] != "int":
-                                raise Exception
-                            ndims.append(dim)
-                        else:
-                            if dim["type"] != "int":
-                                raise Exception
-                            ndims.append(dim["value"])
-                    entry["dimensions"] = ndims
-
+                entry["is_array"] = entry.get("is_array",0)
+                entry["dimensions"] = entry.get("dimensions",None)
                 self._variables[name] = entry
 
             elif kind == 1:
+                entry["local_scope"] = entry.get("local scope",None)
                 self._functions[name] = entry
                 new_name = name+'('+",".join(entry["parameter types"]) +')'
                 self._function_name[new_name] = entry
@@ -81,53 +74,38 @@ class SymbolTable:
 
             return True, entry
         return False, prev_entry
-        # After Storage
-        # Variables (ID) -> {"name", "type", "value", "is_array", "dimensions", "kind", "size", "offset", "pointer_lvl"}
-        # Functions (FN) -> {"name", "return type", "parameter types", "kind", "local scope"}
     
 
     def lookup_current_table(self, name):
         res = self._variables.get(name, None)
-        res = self._functions.get(name, None) if res is None else res
         res = self._function_name.get(name, None) if res is None else res
         return res
     
     def lookup_type(self, name):
-        t = DATATYPE.get(name,None)
+        t = DATATYPE.get(name.upper(),None)
         return t
 
     def lookup(self, name):
         res = self.lookup_current_table(name)
         return self.parent.lookup(name) if res is None and self.parent else res
 
-    """#check
-    def display(self):
-        # Simple Pretty Printer
+    def display(self,disp=0):
         global num_display_invocations
-        print()
-        print("-" * 100)
-        print(f"SYMBOL TABLE: {self.table_name}, TABLE NUMBER: {self.table_number}, FUNCTION SCOPE: {self.func_scope}")
-        print("-" * 51)
-        print(" " * 20 + " Variables " + " " * 20)
-        print("-" * 51)
-        for k, v in self._symtab_variables.items():
-            if v["name"][: min(2, len(k))] == "__":
-                continue
-            print(
-                f"Name: {k}, Type: {v['type'] + '*' * v['pointer_lvl']}, Size: {v['size']}, Offset: {v['offset']}"
-                + ("" if not v["is_array"] else f", Dimensions: {v['dimensions']}")
-            )
-        print("-" * 51)
-        print(" " * 20 + " Functions " + " " * 20)
-        print("-" * 51)
-        for k, v in self._symtab_functions.items():
-            if v["name"][: min(1, len(k))] == "__" or not v["name"][0].isalpha():
-                continue
-            print(
-                f"Name: {v['name']}, Return: {v['return type']}, Parameters: {v['parameter types']}, Name Resolution: {k}"
-            )
-        print("-" * 100)
-        print()
+        if disp==1:
+            print()
+            print("-" * 100)
+            print(f"SYMBOL TABLE: {self.table_name}, TABLE NUMBER: {self.table_number}, FUNCTION SCOPE: {self.func_scope}")
+            print()
+            print(" Variables:: ")
+            print()
+            for k, v in self._variables.items():
+                print(f"Name: {k}, Type: {v['type'] + '*' * v.get('pointer_lvl',0)}")
+            print()
+            print("Functions:: ")
+            print()
+            for k, v in self._function_name.items():
+                print(f"Name: {v['name']}, Return: {v['return type']}, Parameters: {v['parameter types']}, Name Resolution: {k}")
+            print()
 
         # printing symbol tables in csv
         if num_display_invocations == 0:
@@ -144,71 +122,35 @@ class SymbolTable:
                         "VARIABLE/FUNCTION",
                         "NAME",
                         "TYPE",
-                        "SIZE",
-                        "OFFSET",
-                        "DIMENSIONS",
                         "RETURN TYPE",
                         "PARAMETERS",
-                        "NAME RESOLUTION",
                     ]
                 )
                 num_display_invocations += 1
-            for k, v in self._symtab_variables.items():
-                if v["name"][: min(2, len(k))] == "__":
-                    continue
-
-                if not v["is_array"]:
-                    sym_writer.writerow(
-                        [
-                            f"{self.table_name}",
-                            f"{self.func_scope}",
-                            "Variable",
-                            f"{k}",
-                            f"{v['type'] + '*' * v['pointer_lvl']}",
-                            f"{v['size']}",
-                            f"{v['offset']}",
-                            "",
-                            "",
-                            "",
-                            "",
-                        ]
-                    )
-                else:
-                    sym_writer.writerow(
-                        [
-                            f"{self.table_name}",
-                            f"{self.func_scope}",
-                            "Variable",
-                            f"{k}",
-                            f"{v['type'] + '*' * v['pointer_lvl']}",
-                            f"{v['size']}",
-                            f"{v['offset']}",
-                            f"{v['dimensions']}",
-                            "",
-                            "",
-                            "",
-                        ]
-                    )
-
-            for k, v in self._symtab_functions.items():
-                if v["name"][: min(1, len(k))] == "__" or not v["name"][0].isalpha():
-                    continue
+            for k, v in self._variables.items():
+                sym_writer.writerow(
+                    [
+                        f"{self.table_name}",
+                        f"{self.func_scope}",
+                        "Variable",
+                        f"{k}",
+                        f"{v['type'] + '*' * v.get('pointer_lvl',0)}",
+                        "",
+                        "",
+                    ]
+                )
+            for k, v in self._function_name.items():
                 sym_writer.writerow(
                     [
                         f"{self.table_name}",
                         f"{self.func_scope}",
                         "Function",
-                        f"{v['name']}",
-                        "",
-                        "",
-                        "",
-                        "",
-                        f"{v['return type']}",
-                        f"{v['parameter types']}",
                         f"{k}",
+                        "",
+                        f"{v['return type'] + '*' * v.get('pointer_lvl',0)}",
+                        " ".join(v["parameter types"]),
                     ]
                 )
-"""
 
 SYMBOL_TABLES = []
 
@@ -218,7 +160,7 @@ STATIC_VARIABLE_MAPS = {}
 def pop_scope():
     global SYMBOL_TABLES
     s = SYMBOL_TABLES.pop()
-    s.display()
+    s.display(1)
     return s
 
 
@@ -234,13 +176,3 @@ def new_scope(parent=None, function_scope=None):
 def get_current_symtab():
     global SYMBOL_TABLES
     return None if len(SYMBOL_TABLES) == 0 else SYMBOL_TABLES[-1]
-
-def get_default_value(_type):
-    if _type.upper()=="INT":
-        return 0
-    elif _type.upper()=="CHAR":
-        return ''
-    elif _type[-1] == "*":
-        return "NULL"
-    else:
-    	return -1
