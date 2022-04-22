@@ -63,8 +63,12 @@ def p_str(p):
     p[0] = Node("constant","char",is_array=1,_value=p[1])
     
 def p_int(p):
-    """int : INTEGER"""
-    p[0] = Node("constant","int",_value=p[1])
+    """int : INTEGER
+    | '-' INTEGER """
+    if len(p)==2:
+        p[0] = Node("constant","int",_value=p[1])
+    else:
+        p[0] = Node("constant","int",_value=-1*p[1])
     
 def p_char(p):
     """char : CHARACTER"""
