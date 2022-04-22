@@ -1,13 +1,14 @@
 import pydot
 
 class Node:
-    def __init__(self,name,_type,is_array=0,ptr_level=0,children=None,_value=None,code=[]):
+    def __init__(self,name,_type,is_array=0,ptr_level=0,children=None,_value=None,code=[],place=None):
         self.name = name
         self._type = _type
         self.is_array = is_array
         self._value = _value
         self.ptr_level = ptr_level
         self.children = children
+        self.place = place
         self.code = code
 
 def make_node(graph,nd,k='_'):
@@ -44,5 +45,9 @@ def make_ast(graph,node,_k='_'):
                 name2 = make_node(graph,v,k)
                 graph.add_edge(pydot.Edge(name,name2))
 
-
-
+def get_tac(inp):
+    f = open("tac.txt","w")
+    for i in inp:
+        f.write(" ".join(i)+"\n")
+    f.close()
+    return
