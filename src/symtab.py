@@ -27,13 +27,14 @@ class SymbolTable:
     #        1 for FN
     #        2 for ST
     #        3 for CL
-    def __init__(self, parent=None, function_scope=None):
+    def __init__(self, parent=None, function_scope=None,labels={}):
         global TABLENUMBER
         self.func_scope = function_scope if TABLENUMBER != 0 else "GLOBAL"
         self._variables = dict()
         self._functions = dict()
         self._function_name = dict()
         self.parent = parent
+        self.labels=labels
         self.table_number = TABLENUMBER
         TABLENUMBER += 1
 
@@ -76,18 +77,20 @@ class SymbolTable:
         return False, prev_entry
     
 
-    def lookup_current_table(self, name):
+    def lookup_current_table(self, name,func=0):
         res = self._variables.get(name, None)
         res = self._function_name.get(name, None) if res is None else res
+        if func!=0:
+            res = self._functions.get(name, None) if res is None else res
         return res
     
     def lookup_type(self, name):
         t = DATATYPE.get(name.upper(),None)
         return t
 
-    def lookup(self, name):
-        res = self.lookup_current_table(name)
-        return self.parent.lookup(name) if res is None and self.parent else res
+    def lookup(self, name,func=0):
+        res = self.lookup_current_table(name,func)
+        return self.parent.lookup(name,func) if res is None and self.parent else res
 
     def display(self,disp=0):
         global num_display_invocations
