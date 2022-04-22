@@ -4,14 +4,14 @@ from ply.lex import TOKEN
 from tabulate import tabulate
 
 keywords = [
-    'break','char','continue','else','for','if','int','return','struct',
-    'void','while','bool','false','class','true','cin','cout'
+    'break','char','continue','else','for','if','int','return',
+    'void','while','bool','false','true','cin','cout'
 ]
 reserved = {i:i.upper() for i in keywords}
 
 class LexerCPP(object):
     tokens = [
-        'ID','INTEGER','STRING','CHARACTER','PTR','LE','GE','EQUAL','NE','AND','OR','IN','OUT',
+        'ID','INTEGER','STRING','CHARACTER','LE','GE','EQUAL','NE','AND','OR','IN','OUT',
         'ADD_EQ','SUB_EQ','MUL_EQ','DIV_EQ','MOD_EQ','AND_EQ','XOR_EQ','OR_EQ','INC','DEC'
     ]+list(reserved.values())
     literals = ['(',')','[',']','{','}','.','+','-','*','/','%','!','<','>','&','|','^','=',',',';',':','?']
@@ -26,7 +26,6 @@ class LexerCPP(object):
     string = r'\".*\"'
 
     t_ignore_WS = r'[ \f\v\t]+'
-    t_PTR = r'->'
     t_LE = r'<='
     t_GE = r'>='
     t_EQUAL = r'=='
