@@ -18,3 +18,11 @@ make
 cd ..
 ./bin/parser ./test/test.cpp
 ```
+
+## Milestone 4:
+### Semantics :
+Semantic analysis, produces AST.dot, Symbol Table
+
+## Milestone 5:
+### IRcode :
+Intermediate code production
